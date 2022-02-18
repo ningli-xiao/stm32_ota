@@ -48,6 +48,6 @@ void MD5Encode(unsigned char *output,unsigned int *input,unsigned int len);
 
 void MD5Decode(unsigned int *output,unsigned char *input,unsigned int len);
 
-void getmd5(unsigned char* start,unsigned int len,char* output);
+void get_md5(unsigned char* start,unsigned int len,char* output);
 
 #endif
