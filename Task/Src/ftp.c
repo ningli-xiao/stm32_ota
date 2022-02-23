@@ -19,9 +19,8 @@
 uint32_t app_size = 0;//bin文件大小
 uint16_t app_version = 0;//版本号
 uint8_t updata_flag = 0;//升级标志
-uint8_t app_md5[17] = {0xe3, 0xd8, 0xda, 0x3d, 0xf2, 0x27, 0x6d, 0x63, 0x82, 0x08, 0x46, 0x02, 0x20, 0x5f, 0x87, 0x8f,
-                       0x00};//MD5值
-char handle[10] = {0};//手柄初始值
+uint8_t app_md5[17] = {0};//MD5值
+char handle[10] = {0};//MD5值
 uint8_t Lte_RX_ok = 0;
 uint8_t Lte_RX_BUF[LTE_USART_REC_LEN] = {0};
 uint8_t error_count = 0;
@@ -198,8 +197,6 @@ char ftpserver_config() {
 ** 函数名称:   ftpserver_login
 ** 功能描述: 登录
 ** 返 回 值:
-** 作     者:qifei
-** 日     期:2020.8.06
 **************************************************************/
 char ftpserver_login() {
     char *rx_buf = NULL;
@@ -235,8 +232,6 @@ void ftpserver_logout() {
 ** 函数名称:   getfile_list
 ** 功能描述: 获取文件列表
 ** 返 回 值:
-** 作     者:lixiaoning
-** 日     期:2021.6.28
 **************************************************************/
 uint32_t getfile_list() {
 
@@ -246,8 +241,6 @@ uint32_t getfile_list() {
 ** 函数名称:   getfile_size
 ** 功能描述: 获取FTP服务中指定文件的大小
 ** 返 回 值:
-** 作     者:qifei
-** 日     期:2020.8.06
 **************************************************************/
 uint32_t getfile_size() {
     char file_size[100] = "AT+QFTPSIZE=\"G30L_4G_V";
@@ -282,11 +275,7 @@ uint32_t getfile_size() {
 ** 函数名称:   getfile_head
 ** 功能描述: 获取文件头部信息 共96字节
 ** 返 回 值:
-** 作     者:qifei
-** 日     期:2020.8.06
 **************************************************************/
-
-
 char getfile_headmd5(uint8_t *md5) {
     char *rx_buf = NULL;
     char *rx_handle = NULL;
@@ -343,8 +332,6 @@ char getfile_headmd5(uint8_t *md5) {
 ** 函数名称:     deletefile
 ** 功能描述: 删除UFS里存储的文件
 ** 返 回 值: 结果
-** 作     者:lixiaoning
-** 日     期:2021.6.28
 **************************************************************/
 char deletefile() {
     if (0 != SendATCommand("AT+QFDEL=\"*\"\r\n", "OK", TIME_OUT)) {
@@ -358,8 +345,6 @@ char deletefile() {
 ** 函数名称:   downloadfile
 ** 功能描述: 从FTP下载文件，每次下载1024字节
 ** 返 回 值:
-** 作     者:qifei
-** 日     期:2020.8.05
 **************************************************************/
 char downloadfile() {
     char error_count = 0;

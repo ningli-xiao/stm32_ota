@@ -12,8 +12,9 @@ typedef  void ( * pIapFun_TypeDef ) ( void ); //定义一个函数类型的参数.
 typedef struct {
     uint8_t upDataFlag;
     uint16_t appVersion;
+    char fileName[20];
     char serverAddress[20];
-    uint16_t serverPort;
+    char serverPort[5];
     char userName[20];
     char password[20];
 }OtaData;
@@ -24,6 +25,6 @@ typedef struct {
 
 /* 函数声明 ------------------------------------------------------------------*/
 extern void IAP_Write_App_Bin( uint32_t appxaddr, uint8_t * appbuf, uint32_t applen);	//在指定地址开始,写入bin
-extern void IAP_ExecuteApp( uint32_t appxaddr );			                              //执行flash里面的app程序
-extern void get_app_infomation(OtaData* otaInfo);
+extern void IAP_ExecuteApp( uint32_t appxaddr);			                              //执行flash里面的app程序
+extern int get_app_infomation(OtaData* otaInfo);
 #endif /* __IAP_H__ */

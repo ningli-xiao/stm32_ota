@@ -122,6 +122,7 @@ void STMFLASH_Write(uint32_t WriteAddr, uint16_t *pBuffer, uint16_t NumToWrite) 
         {
             desc.PageAddress = secpos * STM_SECTOR_SIZE + FLASH_BASE;
             desc.TypeErase = FLASH_TYPEERASE_PAGES;
+            desc.NbPages = 1;
             HAL_FLASHEx_Erase(&desc, &eraseResult);//擦除这个扇区
             for (i = 0; i < secremain; i++)//复制
             {
