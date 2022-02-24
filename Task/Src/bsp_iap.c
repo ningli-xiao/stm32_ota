@@ -13,10 +13,14 @@
 #include <string.h>
 #include "bsp_iap.h"
 #include "stm_flash.h"
-
+#include "ftp.h"
+#include "md5.h"
 /* 私有类型定义 --------------------------------------------------------------*/
 /* 私有宏定义 ----------------------------------------------------------------*/
 /* 私有变量 ------------------------------------------------------------------*/
+OtaData mcuOtaData;
+FileData mcuFileData;
+uint8_t MD5bin[512]={0};
 /*
  * 函数名：MQTT_Comma_Pos
  * 功能：查找buffer里的指定位置数据
@@ -103,7 +107,7 @@ int get_app_infomation(OtaData *otaInfo) {
 
 /************************************************************
 ** 函数名称:   IAP_Write_App_Bin
-** 功能描述: 从SPI获取文件，写入到STM32FLASH中
+** 功能描述: 从文件缓存区读取文件写入到APP区
 ** 返 回 值:
 **************************************************************/
 void IAP_Write_App_Bin(uint32_t ulStartAddr, uint8_t *pBin_DataBuf, uint32_t ulBufLength) {
@@ -131,19 +135,70 @@ void IAP_Write_App_Bin(uint32_t ulStartAddr, uint8_t *pBin_DataBuf, uint32_t ulB
     }
 }
 
-
-__ASM void MSR_MSP(uint32_t addr)
+/*******************************************************************************
+* Function Name  : Judge_MD5
+* Description    : 计算MD5值和文件数据比较,判断是否正确。
+* Input          : start:校验地址
+* Input          : len:文件总长度
+* Input          : output:MD5缓冲区地址
+* Output         : None
+* Return         : TRUE (success) / FALSE (error)
+*******************************************************************************/
+MD5_CTX md5;
+char Judge_MD5(unsigned char* start,unsigned int len,char* output)
 {
-	MSR MSP, r0
-	BX r14
+    uint8_t i=0;
+    uint16_t pack_num=0;
+    uint16_t rest_len=0;
+    rest_len = len % Split_LEN;
+    if(rest_len ==0){
+        pack_num = len / Split_LEN;
+    }
+    else{
+        pack_num = len / Split_LEN +1;
+    }
+    MD5Init(&md5);
+
+    for (i = 0; i <( pack_num - 1); i++)
+    {
+        //SPI读取Split_LEN个字节到MD5bin[0];
+        STMFLASH_Read(start,FLASH_InfoAddress+i*Split_LEN,Split_LEN);//读取Split_LEN个字节
+        MD5Update(&md5, start, Split_LEN); //传入地址,长度
+    }
+    //SPI读取Split_LEN个字节到MD5bin[0];
+    if (rest_len > 0){
+        STMFLASH_Read(start,FLASH_InfoAddress+(pack_num-1)*Split_LEN,rest_len);//读取Split_LEN个字节
+        MD5Update(&md5, start, rest_len); //传入地址,长度
+    }
+    else{
+        STMFLASH_Read(start,FLASH_InfoAddress+(pack_num-1)*Split_LEN,Split_LEN);//读取Split_LEN个字节
+        MD5Update(&md5, start, Split_LEN); //传入地址,长度
+    }
+    MD5Final(&md5,(unsigned char*)output);
+    //md5值比较
+    for(i=0;i<16;i++)//md5校验结果计算
+    {
+        if(mcuFileData.md5[i]!=decrypt[i])
+        {
+            i=0;
+            return -1;
+        }
+    }
+    return 0;
 }
+
+//__ASM void MSR_MSP(uint32_t addr)
+//{
+//	MSR MSP, r0
+//	BX r14
+//}
 
 void IAP_ExecuteApp(uint32_t ulAddr_App) {
     pIapFun_TypeDef pJump2App;
     if (((*(uint32_t *) ulAddr_App) & 0x2FFE0000) == 0x20000000)      //检查栈顶地址是否合法.
     {
         pJump2App = (pIapFun_TypeDef) *(uint32_t *) (ulAddr_App + 4);    //用户代码区第二个字为程序开始地址(复位地址)
-        MSR_MSP(*(uint32_t *) ulAddr_App);                                        //初始化APP堆栈指针(用户代码区的第一个字用于存放栈顶地址)
+        //MSR_MSP(*(uint32_t *) ulAddr_App);                                        //初始化APP堆栈指针(用户代码区的第一个字用于存放栈顶地址)
         pJump2App();                                                                        //跳转到APP.
     }
 }

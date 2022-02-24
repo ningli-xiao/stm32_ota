@@ -33,6 +33,7 @@
 #include "stm_flash.h"
 #include "ftp.h"
 #include "bsp_iap.h"
+#include "md5.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -77,7 +78,7 @@ enum {
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-OtaData mcuOtaData;
+
 
 uint8_t fetF[100]={0};
 /* USER CODE END PM */
@@ -138,7 +139,7 @@ int main(void)
     HAL_TIM_Base_Start_IT(&htim3);
     __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
     __HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);
-    HAL_UART_Receive_DMA(&huart1, Lte_RX_BUF, LTE_USART_REC_LEN);
+
 
     STMFLASH_Read(FLASH_InfoAddress,(uint16_t *) fetF,50);
     for(i=0;i<20;i++){
@@ -173,31 +174,48 @@ int main(void)
                 OTA_STATUS=OTA_CONFIG;
                 break;
             case OTA_CONFIG:
-                if(ftpserver_config()==0){
+                if(ftpserver_config(&mcuOtaData)==0){
                     printf("config ok\r\n");
                     OTA_STATUS=OTA_LOGIN;
                 }
                 break;
             case OTA_LOGIN:
-                if(ftpserver_login()==0){
+                if(ftpserver_login(&mcuOtaData)==0){
                     printf("login ok\r\n");
                     OTA_STATUS=OTA_DOWNLOAD;
                 }
                 break;
+
             case OTA_DOWNLOAD:
-                if(downloadfile()==0){
-                    printf("download ok\r\n");
+                mcuFileData.app_size=getfile_size(mcuOtaData.fileName);
+                if(mcuFileData.app_size==0){
+
+                }
+                getfile_headmd5(&mcuFileData,mcuOtaData.fileName);
+
+                if(downloadfile(&mcuOtaData)!=0){
+                    printf("download error\r\n");
+
+                }
+                if(writefile(mcuFileData.app_size-96,mcuFileData.handle)==0){
                     OTA_STATUS=OTA_CHECK;
                 }
-
                 break;
             case OTA_CHECK:
-                //get_md5();
-                OTA_STATUS=OTA_WRITE;
+                if(0==Judge_MD5(MD5bin,mcuFileData.app_size-96,(char*)decrypt))
+                {
+                    printf ( "校验通过\r\n" );
+                    OTA_STATUS=OTA_WRITE;
+                }
+                else{
+                    printf ( "校验失败\r\n" );
+                }
+
                 break;
             case OTA_WRITE:
                 //IAP_Write_App_Bin
                 OTA_STATUS=OTA_JUMP;
+                ftpserver_logout();
                 break;
             case OTA_JUMP:
                 HAL_DeInit();
@@ -206,8 +224,10 @@ int main(void)
                 HAL_TIM_Base_DeInit(&htim3);
                 IAP_ExecuteApp(FLASH_AppAddress);
                 break;
+            default:
+                break;
         }
-        //PeachOSRun();
+        HAL_IWDG_Refresh(&hiwdg);
     }
   /* USER CODE END 3 */
 }

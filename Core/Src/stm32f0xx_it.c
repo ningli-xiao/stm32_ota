@@ -23,6 +23,7 @@
 #include "stm32f0xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ftp.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -204,8 +205,8 @@ void USART2_IRQHandler(void)
     if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_IDLE)!= RESET))//
     {
         __HAL_UART_CLEAR_IDLEFLAG(&huart2);//
-        HAL_UART_DMAStop(&huart2); //
-
+        HAL_UART_DMAStop(&huart2);//
+        lteRxFlag=1;
         //temp = __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);//
 
         //DBG_PRINTF("temp boards:%d\r\n",temp);
