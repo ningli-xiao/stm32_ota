@@ -110,12 +110,12 @@ int get_app_infomation(OtaData *otaInfo) {
 ** 功能描述: 从文件缓存区读取文件写入到APP区
 ** 返 回 值:
 **************************************************************/
-void IAP_Write_App_Bin(uint32_t ulStartAddr, uint8_t *pBin_DataBuf, uint32_t ulBufLength) {
+void IAP_Write_App_Bin(uint32_t ulStartAddr, uint16_t *pBin_DataBuf, uint32_t ulBufLength) {
     uint16_t us = 0;
     uint16_t pack_num = 0;
     uint16_t rest_len = 0;
     uint32_t ulAdd_Write = ulStartAddr;                                //当前写入的地址
-    uint8_t *pData = pBin_DataBuf;
+    uint16_t *pData = pBin_DataBuf;
 
     rest_len = ulBufLength % Split_LEN;
     //刚刚好整包
@@ -161,44 +161,44 @@ char Judge_MD5(unsigned char* start,unsigned int len,char* output)
 
     for (i = 0; i <( pack_num - 1); i++)
     {
-        //SPI读取Split_LEN个字节到MD5bin[0];
-        STMFLASH_Read(start,FLASH_InfoAddress+i*Split_LEN,Split_LEN);//读取Split_LEN个字节
+        //读取Split_LEN个字节到MD5bin[0];
+        STMFLASH_Read(FLASH_InfoAddress+i*Split_LEN,(uint16_t *)start,Split_LEN);//读取Split_LEN个字节
         MD5Update(&md5, start, Split_LEN); //传入地址,长度
     }
-    //SPI读取Split_LEN个字节到MD5bin[0];
+
     if (rest_len > 0){
-        STMFLASH_Read(start,FLASH_InfoAddress+(pack_num-1)*Split_LEN,rest_len);//读取Split_LEN个字节
+        //读取剩下的几个字节到MD5bin[0];
+        STMFLASH_Read(FLASH_InfoAddress+(pack_num-1)*Split_LEN,(uint16_t *)start,rest_len);//读取Split_LEN个字节
         MD5Update(&md5, start, rest_len); //传入地址,长度
     }
     else{
-        STMFLASH_Read(start,FLASH_InfoAddress+(pack_num-1)*Split_LEN,Split_LEN);//读取Split_LEN个字节
+        STMFLASH_Read(FLASH_InfoAddress+(pack_num-1)*Split_LEN,(uint16_t *)start,Split_LEN);//读取Split_LEN个字节
         MD5Update(&md5, start, Split_LEN); //传入地址,长度
     }
     MD5Final(&md5,(unsigned char*)output);
-    //md5值比较
+    //md5值比较：可替换memcmp函数
     for(i=0;i<16;i++)//md5校验结果计算
     {
         if(mcuFileData.md5[i]!=decrypt[i])
         {
-            i=0;
             return -1;
         }
     }
     return 0;
 }
 
-//__ASM void MSR_MSP(uint32_t addr)
-//{
-//	MSR MSP, r0
-//	BX r14
-//}
+__ASM void MSR_MSP(uint32_t addr)
+{
+	MSR MSP, r0
+	BX r14
+}
 
 void IAP_ExecuteApp(uint32_t ulAddr_App) {
     pIapFun_TypeDef pJump2App;
     if (((*(uint32_t *) ulAddr_App) & 0x2FFE0000) == 0x20000000)      //检查栈顶地址是否合法.
     {
         pJump2App = (pIapFun_TypeDef) *(uint32_t *) (ulAddr_App + 4);    //用户代码区第二个字为程序开始地址(复位地址)
-        //MSR_MSP(*(uint32_t *) ulAddr_App);                                        //初始化APP堆栈指针(用户代码区的第一个字用于存放栈顶地址)
+        MSR_MSP(*(uint32_t *) ulAddr_App);                                        //初始化APP堆栈指针(用户代码区的第一个字用于存放栈顶地址)
         pJump2App();                                                                        //跳转到APP.
     }
 }

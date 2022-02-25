@@ -82,10 +82,14 @@ char *Int2String(int num, char *str)//10进制
  * 输入：无
  * 返回：无
  */
-static void ModuleOpen(void) {
+char ModuleOpen(void) {
     HAL_GPIO_WritePin(ONOFF_EC200_GPIO_Port, ONOFF_EC200_Pin, GPIO_PIN_SET);
-    HAL_Delay(1500);
+    HAL_Delay(600);
     HAL_GPIO_WritePin(ONOFF_EC200_GPIO_Port, ONOFF_EC200_Pin, GPIO_PIN_RESET);
+    if (Wait_LTE_RDY(5) != 0) {
+        return -1;
+    }
+    return 0;
 }
 
 void UART_SendData(char *pdatabuf) {
@@ -125,6 +129,37 @@ char *SendATCommand(char *pCommand, char *pEcho, uint32_t outTime) {
     return pRet;
 }
 
+/*
+ * 函数名：SoftReset
+ * 功能：软件复位，接受到OTA指令后执行
+ * 输入：无
+ * 返回：无
+ */
+void SoftReset(void)
+{
+    __set_PRIMASK(1);
+    HAL_NVIC_SystemReset();
+}
+
+/*
+ * 函数名：MQTTClient_init
+ * 功能：开机初始化等
+ * 输入：无
+ * 返回：
+ */
+int MQTTClient_init() {
+    if (SendATCommand("ATE0\r\n", "OK", TIME_OUT) == 0) {
+        printf("MQTT_OPENING\r\n");
+        if (ModuleOpen() != 0) {
+            return -1;
+        }
+    } else {
+        printf("MQTT was OPENED\r\n");
+    }
+    Wait_Signal_RDY(3);
+    return 0;
+}
+
 /************************************************************
 ** 函数名称:   ftpserver_config
 ** 功能描述: 配置FTP服务信息
@@ -134,12 +169,6 @@ char *SendATCommand(char *pCommand, char *pEcho, uint32_t outTime) {
 char ftpserver_config(OtaData *ftpInfo) {
     char *rx_buf = NULL;
     char buf[128] = {0};
-
-    rx_buf = SendATCommand("ATE0\r\n", "OK", TIME_IN);
-    if (rx_buf == NULL) {
-        printf("ATE0 error\r\n");
-        return -1;
-    }
 
     rx_buf = SendATCommand("AT+QIDEACT=1\r\n", "OK", TIME_OUT);
     if (rx_buf == NULL) {
@@ -492,6 +521,25 @@ int LTE_Signal_Quality(void) {
     }
     printf("signal_value:%s\r\n", lteRxBuf);
     if (strstr((char *) pRet, "99,99") != 0) {
+        return -1;
+    }
+    return 0;
+}
+
+//下载文件并
+char downloadAndWrite() {
+    mcuFileData.app_size = getfile_size(mcuOtaData.fileName)-96;
+    if(mcuFileData.app_size==0){
+        printf("app_size error\r\n");
+        return -1;
+    }
+    deletefile();
+    if (downloadfile(&mcuOtaData) != 0) {
+        printf("download error\r\n");
+        return -1;
+    }
+    if (writefile(mcuFileData.app_size - 96, mcuFileData.handle) != 0) {
+        printf("write error\r\n");
         return -1;
     }
     return 0;

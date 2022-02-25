@@ -72,7 +72,6 @@ uint16_t STMFLASH_ReadHalfWord(uint32_t faddr) {
   */
 void STMFLASH_Write_NoCheck(uint32_t WriteAddr, uint16_t *pBuffer, uint16_t NumToWrite) {
     uint16_t i;
-
     for (i = 0; i < NumToWrite; i++) {
         HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, WriteAddr, pBuffer[i]);
         WriteAddr += 2;                                    //地址增加2字节

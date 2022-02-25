@@ -20,9 +20,10 @@ extern char handle[10];
 extern void SoftReset(void);
 extern int Wait_LTE_RDY(uint8_t time);
 extern int Wait_Signal_RDY(uint8_t time);
+extern char ModuleOpen(void);
+extern int MQTTClient_init();
 
-extern void LteActivation(void);
-extern char* Send_FTPATCommand(char *pCommand, char *pEcho, uint32_t outTime);
+extern char  downloadAndWrite();
 extern char deletefile();
 extern char downloadfile(OtaData *otaInfo);
 extern char writefile(uint32_t len,char* FileHandle);

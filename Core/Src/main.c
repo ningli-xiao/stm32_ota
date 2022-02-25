@@ -79,8 +79,6 @@ enum {
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 
-
-uint8_t fetF[100]={0};
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -91,6 +89,7 @@ uint8_t fetF[100]={0};
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -103,120 +102,140 @@ static void MX_NVIC_Init(void);
   * @brief  The application entry point.
   * @retval int
   */
-int main(void)
-{
-  /* USER CODE BEGIN 1 */
-  int i=0;
-  /* USER CODE END 1 */
+int main(void) {
+    /* USER CODE BEGIN 1 */
+    int i = 0;
+    static uint8_t restartCount = 0;
+    static uint8_t errorCount = 0;
+    static uint8_t openCount=0;//开机失败次数加1
+    /* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+    /* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+    /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+    HAL_Init();
 
-  /* USER CODE BEGIN Init */
+    /* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+    /* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
+    /* Configure the system clock */
+    SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
+    /* USER CODE BEGIN SysInit */
 
-  /* USER CODE END SysInit */
+    /* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_USART1_UART_Init();
-  MX_USART2_UART_Init();
-  MX_IWDG_Init();
-  MX_TIM3_Init();
+    /* Initialize all configured peripherals */
+    MX_GPIO_Init();
+    MX_DMA_Init();
+    MX_USART1_UART_Init();
+    MX_USART2_UART_Init();
+    MX_IWDG_Init();
+    MX_TIM3_Init();
 
-  /* Initialize interrupts */
-  MX_NVIC_Init();
-  /* USER CODE BEGIN 2 */
+    /* Initialize interrupts */
+    MX_NVIC_Init();
+    /* USER CODE BEGIN 2 */
     HAL_TIM_Base_Start_IT(&htim3);
     __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
     __HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);
 
-
-    STMFLASH_Read(FLASH_InfoAddress,(uint16_t *) fetF,50);
-    for(i=0;i<20;i++){
-        printf("i %d is :%d\r\n",i,fetF[i]);
-    }
     printf("hello I am ota\r\n");
     HAL_Delay(200);
-  /* USER CODE END 2 */
+    /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+    /* Infinite loop */
+    /* USER CODE BEGIN WHILE */
 
     get_app_infomation(&mcuOtaData);
-    if(mcuOtaData.upDataFlag==1){
+    if (mcuOtaData.upDataFlag == 1) {
         printf("ota begin\r\n");
-        OTA_STATUS= OTA_INIT;
-    }
-    else{
+        OTA_STATUS = OTA_INIT;
+    } else {
         printf("no ota\r\n");
-        OTA_STATUS= OTA_JUMP;
+        OTA_STATUS = OTA_JUMP;
     }
 
 
 //   __enable_irq();
     while (1) {
-    /* USER CODE END WHILE */
+        /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+        /* USER CODE BEGIN 3 */
+        //异常处理机制
+        if (openCount > 3) {
+            openCount = 0;
+            OTA_STATUS = OTA_JUMP;//没电进入app程序,等待升级
+        }
+
+        if (restartCount > 3) {
+            restartCount = 0;
+            OTA_STATUS = OTA_JUMP;//升级失败，直接跳转
+        }
+
+        if (errorCount > 3) {
+            errorCount = 0;
+            //是否需要关机？
+            ++restartCount;//重启次数加1
+            OTA_STATUS = OTA_INIT;
+        }
+
         switch (OTA_STATUS) {
             case OTA_INIT:
-                feedTask();
-                OTA_STATUS=OTA_CONFIG;
+                if (MQTTClient_init() == 0) {
+                    OTA_STATUS = OTA_CONFIG;
+                } else {
+                    openCount++;//没电时可能频繁开机失败
+                }
                 break;
             case OTA_CONFIG:
-                if(ftpserver_config(&mcuOtaData)==0){
+                if (ftpserver_config(&mcuOtaData) == 0) {
                     printf("config ok\r\n");
-                    OTA_STATUS=OTA_LOGIN;
+                    OTA_STATUS = OTA_LOGIN;
+                }
+                else{
+                   errorCount++;
                 }
                 break;
             case OTA_LOGIN:
-                if(ftpserver_login(&mcuOtaData)==0){
+                if (ftpserver_login(&mcuOtaData) == 0) {
                     printf("login ok\r\n");
-                    OTA_STATUS=OTA_DOWNLOAD;
+                    OTA_STATUS = OTA_DOWNLOAD;
+                }
+                else{
+                    errorCount++;
                 }
                 break;
 
             case OTA_DOWNLOAD:
-                mcuFileData.app_size=getfile_size(mcuOtaData.fileName);
-                if(mcuFileData.app_size==0){
-
+                if(downloadAndWrite()==0){
+                    printf("download ok\r\n");
+                    OTA_STATUS = OTA_CHECK;
                 }
-                getfile_headmd5(&mcuFileData,mcuOtaData.fileName);
-
-                if(downloadfile(&mcuOtaData)!=0){
-                    printf("download error\r\n");
-
-                }
-                if(writefile(mcuFileData.app_size-96,mcuFileData.handle)==0){
-                    OTA_STATUS=OTA_CHECK;
+                else{
+                    errorCount++;
                 }
                 break;
             case OTA_CHECK:
-                if(0==Judge_MD5(MD5bin,mcuFileData.app_size-96,(char*)decrypt))
-                {
-                    printf ( "校验通过\r\n" );
-                    OTA_STATUS=OTA_WRITE;
-                }
-                else{
-                    printf ( "校验失败\r\n" );
+                getfile_headmd5(&mcuFileData, mcuOtaData.fileName);//直接从远程读取，防止文件下载中error
+                if (0 == Judge_MD5(MD5bin, mcuFileData.app_size, (char *) decrypt)) {
+                    printf("check ok\r\n");
+                    for(i=0;i<16;i++){printf("md5 before:%x\r\n",mcuFileData.md5[i]);};
+                    for(i=0;i<16;i++){printf("md5 now:%x\r\n",decrypt[i]);};
+                    OTA_STATUS = OTA_WRITE;
+                } else {
+                    errorCount++;
                 }
 
                 break;
             case OTA_WRITE:
-                //IAP_Write_App_Bin
-                OTA_STATUS=OTA_JUMP;
+                //一定要保证完全正确进入这一步
+                IAP_Write_App_Bin(FLASH_AppAddress,(uint16_t *)FLASH_InfoAddress,mcuFileData.app_size);
+                OTA_STATUS = OTA_JUMP;
                 ftpserver_logout();
                 break;
+                //再次校验加入
             case OTA_JUMP:
                 HAL_DeInit();
                 HAL_UART_MspDeInit(&huart1);
@@ -229,69 +248,64 @@ int main(void)
         }
         HAL_IWDG_Refresh(&hiwdg);
     }
-  /* USER CODE END 3 */
+    /* USER CODE END 3 */
 }
 
 /**
   * @brief System Clock Configuration
   * @retval None
   */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+void SystemClock_Config(void) {
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+    RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
-  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+    /** Initializes the RCC Oscillators according to the specified parameters
+    * in the RCC_OscInitTypeDef structure.
+    */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_LSI;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+    RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        Error_Handler();
+    }
+    /** Initializes the CPU, AHB and APB buses clocks
+    */
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                                  | RCC_CLOCKTYPE_PCLK1;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
+        Error_Handler();
+    }
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+    PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+        Error_Handler();
+    }
 }
 
 /**
   * @brief NVIC Configuration.
   * @retval None
   */
-static void MX_NVIC_Init(void)
-{
-  /* TIM3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(TIM3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(TIM3_IRQn);
-  /* USART1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(USART1_IRQn);
-  /* USART2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(USART2_IRQn);
+static void MX_NVIC_Init(void) {
+    /* TIM3_IRQn interrupt configuration */
+    HAL_NVIC_SetPriority(TIM3_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(TIM3_IRQn);
+    /* USART1_IRQn interrupt configuration */
+    HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    /* USART2_IRQn interrupt configuration */
+    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
@@ -302,12 +316,11 @@ static void MX_NVIC_Init(void)
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler(void)
-{
-  /* USER CODE BEGIN Error_Handler_Debug */
+void Error_Handler(void) {
+    /* USER CODE BEGIN Error_Handler_Debug */
     /* User can add his own implementation to report the HAL error return state */
 
-  /* USER CODE END Error_Handler_Debug */
+    /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
