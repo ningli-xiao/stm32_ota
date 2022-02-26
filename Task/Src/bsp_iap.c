@@ -105,39 +105,7 @@ int get_app_infomation(OtaData *otaInfo) {
     return 0;
 }
 
-/************************************************************
-** 函数名称:   IAP_Write_App_Bin
-** 功能描述: 从文件缓存区读取文件写入到APP区
-** 返 回 值:
-**************************************************************/
-void IAP_Write_App_Bin(uint32_t ulStartAddr, uint16_t *pBin_DataBuf, uint32_t ulBufLength) {
-    uint16_t us = 0;
-    uint16_t pack_num = 0;
-    uint16_t rest_len = 0;
-    uint32_t ulAdd_Write = ulStartAddr;                                //当前写入的地址
-    uint16_t *pData = pBin_DataBuf;
 
-    rest_len = ulBufLength % Split_LEN;
-    //刚刚好整包
-    if (rest_len == 0) {
-        pack_num = ulBufLength / Split_LEN;
-    } else {
-        pack_num = ulBufLength / Split_LEN + 1;
-    }
-
-    for (us = 0; us < (pack_num - 1); us++) {
-
-//        memset(MD5bin,0,DOWNLOADLEN);
-//        STMFLASH_Read(pData,MD5bin,DOWNLOADLEN/2);
-
-        STMFLASH_Write(ulAdd_Write, (uint16_t *) pData, Split_LEN / 2);
-        ulAdd_Write += Split_LEN;                                           //偏移2048  16=2*8.所以要乘以2.
-    }
-
-    if (0 != rest_len) {
-        STMFLASH_Write(ulAdd_Write, (uint16_t *) pData, (rest_len / 2 + rest_len % 2));//将最后的一些内容字节写进去.
-    }
-}
 
 
 __ASM void MSR_MSP(uint32_t addr)

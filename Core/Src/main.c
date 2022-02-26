@@ -98,31 +98,6 @@ static void MX_NVIC_Init(void);
 /* USER CODE BEGIN 0 */
 /* USER CODE END 0 */
 
-//void test(uint8_t * padta) {
-//    char *rx_buf = NULL;
-//    uint16_t Abuf[110] ;
-//    int i = 0;
-//    for (i = 0; i < 256; i++) { lteRxBuf[i] = 0x30 + i%10; }
-//
-//    rx_buf = FindStrFroMem((char *)lteRxBuf,256,"12345678");
-//    memcpy(padta,rx_buf,200);
-//    if (rx_buf != 0) {
-//        printf("t begin\r\n");
-//		STMFLASH_Write(FLASH_FileAddress,(uint16_t *) FLASH_InfoAddress, DOWNLOADLEN / 2);
-//        printf("t 0\r\n");
-//        STMFLASH_Write(FLASH_FileAddress, (uint16_t *) lteRxBuf, DOWNLOADLEN / 2);
-//        printf("t 1\r\n");
-//        STMFLASH_Write(FLASH_FileAddress+2048, (uint16_t *) padta, DOWNLOADLEN / 2);
-//        printf("t end\r\n");
-//    }
-//    STMFLASH_Read(FLASH_FileAddress+2048,Abuf,100);{
-//        printf("t :%x\r\n",Abuf[0]);
-//        printf("t :%x\r\n",Abuf[1]);
-//        printf("t :%x\r\n",Abuf[2]);
-//
-//    }
-//}
-
 /**
   * @brief  The application entry point.
   * @retval int
@@ -250,18 +225,16 @@ int main(void) {
                 }
                 break;
             case OTA_WRITE:
-                printf("write!!!\r\n");
-                //一定要保证完全正确进入这一步
-                __disable_irq();
-                IAP_Write_App_Bin(FLASH_AppAddress, (uint16_t *) FLASH_FileAddress, mcuFileData.app_size);
-                __enable_irq();
+                STMFLASH_Write(FLASH_AppAddress, (uint16_t *) FLASH_FileAddress, mcuFileData.app_size/2+mcuFileData.app_size%2);
                 OTA_STATUS = OTA_JUMP;
-                printf("go to jump!!!\r\n");
+
+                if(getMd5AndCmp((unsigned char *)FLASH_AppAddress,mcuFileData.app_size,decrypt)==0){
+                    printf("check is ok again!!!\r\n");
+                }
                 ftpserver_logout();
                 break;
                 //再次校验加入
             case OTA_JUMP:
-                printf("jump!!!\r\n");
                 HAL_DeInit();
                 HAL_UART_MspDeInit(&huart1);
                 HAL_UART_MspDeInit(&huart2);
