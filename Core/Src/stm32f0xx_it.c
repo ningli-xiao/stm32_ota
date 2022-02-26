@@ -57,9 +57,7 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern TIM_HandleTypeDef htim3;
 extern UART_HandleTypeDef huart1;
-extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -142,36 +140,6 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles TIM3 global interrupt.
-  */
-void TIM3_IRQHandler(void)
-{
-  /* USER CODE BEGIN TIM3_IRQn 0 */
-    static uint32_t Timer_1s=0;
-    static uint32_t Timer_100ms=0;
-  /* USER CODE END TIM3_IRQn 0 */
-  /* USER CODE BEGIN TIM3_IRQn 1 */
-    if (__HAL_TIM_GET_FLAG(&htim3, TIM_FLAG_UPDATE) != RESET)
-    {
-        if (__HAL_TIM_GET_IT_SOURCE(&htim3, TIM_IT_UPDATE) != RESET)
-        {
-
-            Timer_1s++;
-            Timer_100ms++;
-            if(Timer_1s>=1000){
-                Timer_1s=0;
-            }
-            if(Timer_100ms>=100) {
-                Timer_100ms = 0;
-            }
-
-            __HAL_TIM_CLEAR_IT(&htim3, TIM_IT_UPDATE);
-        }
-    }
-  /* USER CODE END TIM3_IRQn 1 */
-}
-
-/**
   * @brief This function handles USART1 global interrupt.
   */
 void USART1_IRQHandler(void)
@@ -182,42 +150,13 @@ void USART1_IRQHandler(void)
     if((__HAL_UART_GET_FLAG(&huart1,UART_FLAG_IDLE)!= RESET))//
     {
         __HAL_UART_CLEAR_IDLEFLAG(&huart1);//
-        HAL_UART_DMAStop(&huart1); //
-
-        //temp = __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);//
-
-       // DBG_PRINTF("temp AT:%d\r\n",temp);
+        lteRxFlag=1;
     }
-    //HAL_UART_Receive_DMA( &huart1, msgRecBuff, MSG_REC_LEN);
+    
   /* USER CODE END USART1_IRQn 0 */
   /* USER CODE BEGIN USART1_IRQn 1 */
 
   /* USER CODE END USART1_IRQn 1 */
-}
-
-/**
-  * @brief This function handles USART2 global interrupt.
-  */
-void USART2_IRQHandler(void)
-{
-  /* USER CODE BEGIN USART2_IRQn 0 */
-    int temp;
-    if((__HAL_UART_GET_FLAG(&huart2,UART_FLAG_IDLE)!= RESET))//
-    {
-        __HAL_UART_CLEAR_IDLEFLAG(&huart2);//
-        HAL_UART_DMAStop(&huart2);//
-        lteRxFlag=1;
-        //temp = __HAL_DMA_GET_COUNTER(&hdma_usart2_rx);//
-
-        //DBG_PRINTF("temp boards:%d\r\n",temp);
-				
-    }
-    //HAL_UART_Receive_DMA( &huart2, boardsRecBuff, BOARDS_REC_LEN);
-		//DBG_PRINTF("back:%s\r\n",boardsRecBuff);
-  /* USER CODE END USART2_IRQn 0 */
-  /* USER CODE BEGIN USART2_IRQn 1 */
-
-  /* USER CODE END USART2_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

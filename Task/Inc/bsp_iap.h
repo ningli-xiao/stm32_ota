@@ -31,9 +31,8 @@ typedef struct {
 /* 扩展变量 ------------------------------------------------------------------*/
 extern OtaData mcuOtaData;
 extern FileData mcuFileData;
-extern uint8_t MD5bin[512];
+extern uint8_t MD5bin[1024];
 /* 函数声明 ------------------------------------------------------------------*/
-extern char Judge_MD5(unsigned char* start,unsigned int len,char* output);
 extern void IAP_Write_App_Bin( uint32_t appxaddr, uint16_t * appbuf, uint32_t applen);	//在指定地址开始,写入bin
 extern void IAP_ExecuteApp( uint32_t appxaddr);			                              //执行flash里面的app程序
 extern int get_app_infomation(OtaData* otaInfo);

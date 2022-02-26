@@ -297,21 +297,27 @@ void MD5Transform(unsigned int state[4], unsigned char block[64]) {
 }
 
 /*******************************************************************************
-* Function Name  : Get_md5
-* Description    : 计算MD5值,数据保存到decrypt数组中。
+* Function Name  : getMd5AndCmp
+* Description    : 计算MD5值,数据保存到decrypt数组中。进行比较
 * Input          : None
 * Input          : None
 * Output         : None
 * Return         : None
 *******************************************************************************/
-void get_md5(unsigned char *start, unsigned int len, char *output) {
+char getMd5AndCmp(unsigned char *start, unsigned int len, char *output) {
     MD5_CTX md5;
-
-    //unsigned char encrypt[] ="admin";//21232f297a57a5a743894a0e4a801fc3
-
+    uint16_t i=0;
     MD5Init(&md5);
 
-    MD5Update(&md5, start, len);//最后16个字节是MD5校验值
+    MD5Update(&md5, start, len);
 
     MD5Final(&md5, output);
+    for(i=0;i<16;i++)//md5校验结果计算
+    {
+        if(mcuFileData.md5[i]!=decrypt[i])
+        {
+            return -1;
+        }
+    }
+    return 0;
 }

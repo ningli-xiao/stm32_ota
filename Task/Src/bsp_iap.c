@@ -20,7 +20,7 @@
 /* 私有变量 ------------------------------------------------------------------*/
 OtaData mcuOtaData;
 FileData mcuFileData;
-uint8_t MD5bin[512]={0};
+uint8_t MD5bin[1024]={0};
 /*
  * 函数名：MQTT_Comma_Pos
  * 功能：查找buffer里的指定位置数据
@@ -55,7 +55,7 @@ int get_app_infomation(OtaData *otaInfo) {
 
     ptr = strstr(temp_Buffer, "update");
     if (ptr == 0) {
-        //return -1;
+        return -1;
     }
     otaInfo->upDataFlag = 1;
 
@@ -126,6 +126,10 @@ void IAP_Write_App_Bin(uint32_t ulStartAddr, uint16_t *pBin_DataBuf, uint32_t ul
     }
 
     for (us = 0; us < (pack_num - 1); us++) {
+
+//        memset(MD5bin,0,DOWNLOADLEN);
+//        STMFLASH_Read(pData,MD5bin,DOWNLOADLEN/2);
+
         STMFLASH_Write(ulAdd_Write, (uint16_t *) pData, Split_LEN / 2);
         ulAdd_Write += Split_LEN;                                           //偏移2048  16=2*8.所以要乘以2.
     }
@@ -135,57 +139,6 @@ void IAP_Write_App_Bin(uint32_t ulStartAddr, uint16_t *pBin_DataBuf, uint32_t ul
     }
 }
 
-/*******************************************************************************
-* Function Name  : Judge_MD5
-* Description    : 计算MD5值和文件数据比较,判断是否正确。
-* Input          : start:校验地址
-* Input          : len:文件总长度
-* Input          : output:MD5缓冲区地址
-* Output         : None
-* Return         : TRUE (success) / FALSE (error)
-*******************************************************************************/
-MD5_CTX md5;
-char Judge_MD5(unsigned char* start,unsigned int len,char* output)
-{
-    uint8_t i=0;
-    uint16_t pack_num=0;
-    uint16_t rest_len=0;
-    rest_len = len % Split_LEN;
-    if(rest_len ==0){
-        pack_num = len / Split_LEN;
-    }
-    else{
-        pack_num = len / Split_LEN +1;
-    }
-    MD5Init(&md5);
-
-    for (i = 0; i <( pack_num - 1); i++)
-    {
-        //读取Split_LEN个字节到MD5bin[0];
-        STMFLASH_Read(FLASH_InfoAddress+i*Split_LEN,(uint16_t *)start,Split_LEN);//读取Split_LEN个字节
-        MD5Update(&md5, start, Split_LEN); //传入地址,长度
-    }
-
-    if (rest_len > 0){
-        //读取剩下的几个字节到MD5bin[0];
-        STMFLASH_Read(FLASH_InfoAddress+(pack_num-1)*Split_LEN,(uint16_t *)start,rest_len);//读取Split_LEN个字节
-        MD5Update(&md5, start, rest_len); //传入地址,长度
-    }
-    else{
-        STMFLASH_Read(FLASH_InfoAddress+(pack_num-1)*Split_LEN,(uint16_t *)start,Split_LEN);//读取Split_LEN个字节
-        MD5Update(&md5, start, Split_LEN); //传入地址,长度
-    }
-    MD5Final(&md5,(unsigned char*)output);
-    //md5值比较：可替换memcmp函数
-    for(i=0;i<16;i++)//md5校验结果计算
-    {
-        if(mcuFileData.md5[i]!=decrypt[i])
-        {
-            return -1;
-        }
-    }
-    return 0;
-}
 
 __ASM void MSR_MSP(uint32_t addr)
 {

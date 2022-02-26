@@ -86,12 +86,36 @@ char ModuleOpen(void) {
     HAL_GPIO_WritePin(ONOFF_EC200_GPIO_Port, ONOFF_EC200_Pin, GPIO_PIN_SET);
     HAL_Delay(600);
     HAL_GPIO_WritePin(ONOFF_EC200_GPIO_Port, ONOFF_EC200_Pin, GPIO_PIN_RESET);
+    HAL_UART_DMAStop(&huart1);
+    HAL_UART_Receive_DMA(&huart1, lteRxBuf, LTE_USART_REC_LEN);//防止分段
     if (Wait_LTE_RDY(5) != 0) {
         return -1;
     }
     return 0;
 }
 
+/*
+ * 函数名：ModuleClose
+ * 功能：4G模组关机
+ * 输入：无
+ * 返回：无
+ */
+int ModuleClose(void) {
+    char *pRet = NULL;
+    uint8_t i = 0;
+    if (SendATCommand("AT+QPOWD=0\r\n", "POWERED DOWN", TIME_OUT) == 0) {
+        printf("CLOSE EC2000 Fail\r\n");
+    } else {
+        printf("CLOSE OK:%s\r\n", lteRxBuf);
+        return 0;
+    }
+
+    //关机失败再关机一次
+    if (SendATCommand("AT+QPOWD=0\r\n", "POWERED DOWN", TIME_OUT) == 0) {
+        printf("CLOSE EC2000 Fail\r\n");
+        return -1;
+    }
+}
 void UART_SendData(char *pdatabuf) {
     uint16_t sizeTemp = 0;
     sizeTemp = strlen(pdatabuf);
@@ -111,7 +135,7 @@ char *SendATCommand(char *pCommand, char *pEcho, uint32_t outTime) {
     HAL_IWDG_Refresh(&hiwdg);//某些联网时间运行时间过长
     if (NULL != pCommand) {
         HAL_UART_DMAStop(&huart1);
-        HAL_UART_Receive_DMA(&huart1, lteRxBuf, LTE_USART_REC_LEN);
+        HAL_UART_Receive_DMA(&huart1, lteRxBuf, LTE_USART_REC_LEN);//防止分段
         memset(lteRxBuf, 0, LTE_USART_REC_LEN);//必须先清空
         UART_SendData(pCommand);
     }
@@ -126,6 +150,11 @@ char *SendATCommand(char *pCommand, char *pEcho, uint32_t outTime) {
         }
         HAL_Delay(1);
     }
+
+    pRet = FindStrFroMem(lteRxBuf, LTE_USART_REC_LEN, pEcho);
+    if (pRet != 0) {
+        return pRet;
+    }//again
     return pRet;
 }
 
@@ -135,8 +164,7 @@ char *SendATCommand(char *pCommand, char *pEcho, uint32_t outTime) {
  * 输入：无
  * 返回：无
  */
-void SoftReset(void)
-{
+void SoftReset(void) {
     __set_PRIMASK(1);
     HAL_NVIC_SystemReset();
 }
@@ -175,7 +203,7 @@ char ftpserver_config(OtaData *ftpInfo) {
         printf("AT+QIDEACT error\r\n");
     }
 
-    rx_buf = SendATCommand("AT+QIACT=1\r\n", "OK", TIME_IN);
+    rx_buf = SendATCommand("AT+QIACT=1\r\n", "OK", TIME_OUT);
     if (rx_buf == NULL) {
         printf("AT+QIACT error\r\n");
         return -1;
@@ -262,7 +290,8 @@ uint32_t getfile_size(char *fileName) {
         return 0;
     }
     len = atoi(rx_buf + 13);
-    printf("文件长度0：%d\r\n", len);
+    printf("文件长度:%s\r\n", rx_buf);
+    printf("文件长度:%d\r\n", len);
     return len;
 }
 
@@ -293,7 +322,6 @@ char getfile_headmd5(FileData *fileInfo, char *fileName) {
     if (rx_handle != NULL) {
         rx_handle += 9;
         memcpy(fileInfo->handle, rx_handle, (uint8_t) (rx_buf - rx_handle - 4));//减去两个0D0A
-        printf("get handle right:%s\r\n", handle);
     } else {
         printf("get handle error:%s\r\n", lteRxBuf);
         return -1;
@@ -308,8 +336,7 @@ char getfile_headmd5(FileData *fileInfo, char *fileName) {
     if (rx_buf != 0) {
         rx_buf = FindStrFroMem((char *) &lteRxBuf[0], LTE_USART_REC_LEN, "CONNECT");
         if (rx_buf != 0) {
-            rx_buf += 9;
-            printf("读取MD5 ok:%s\r\n", lteRxBuf);
+            rx_buf += 12;//移动到指定位置
             memcpy(fileInfo->md5, rx_buf + 80, 16);
         } else {
             printf("MD5 no connect:%s\r\n", lteRxBuf);
@@ -362,14 +389,14 @@ char downloadfile(OtaData *otaInfo) {
     strcat(buf, "\"UFS:app.bin\"\r\n");
 
     rx_buf = SendATCommand(buf, "OK", TIME_OUT);
-    if (rx_buf != NULL) {
+    if (rx_buf == NULL) {
         printf("下载失败%s\r\n", lteRxBuf);
         return -1;
     }
 
     if (wait_download() != 0) {
-        printf("下载失败%s\r\n", lteRxBuf);
-        return -1;
+        printf("WAIT ERROR%s\r\n", lteRxBuf);
+        //return -1;
     }
 
     return 0;
@@ -381,34 +408,34 @@ char downloadfile(OtaData *otaInfo) {
  * 注意要减去96的头文件长度
 ** 返 回 值:
 **************************************************************/
-char writefile(uint32_t len,char* FileHandle) {
+char writefile(uint32_t len, char *FileHandle,uint8_t *pData) {
     static uint16_t count = 0;
 
     char *rx_buf = NULL;
-    char str_len[5]={0};
+    char str_len[5] = {0};
     char buf[128] = {0};
+    uint16_t testBuf[2] = {0};
 
     uint32_t time = 0;
-    uint32_t rest_flag = 0;
+    uint32_t rest_len = 0;
 
     time = len / DOWNLOADLEN;
-    rest_flag = len % DOWNLOADLEN;//是否有剩余包
+    rest_len = len % DOWNLOADLEN;//是否有剩余包
 
-    if (count < time) {
+    while (count < time) {
         memset(buf, 0, 128);
         memset(str_len, 0, 5);
         strcpy(buf, "AT+QFSEEK=");
         strcat(buf, FileHandle);
         strcat(buf, ",");
-        sprintf(str_len,"%d",HEAD_LEN + count * DOWNLOADLEN);
+        sprintf(str_len, "%d", HEAD_LEN + count * DOWNLOADLEN);
         strcat(buf, str_len);
         strcat(buf, ",0\r\n");//每次从文件最初位置开始移动
 
         rx_buf = SendATCommand(buf, str_len, TIME_IN);
-        if (rx_buf != 0) {
-            printf("seek right:%s\r\n", lteRxBuf);
-        } else {
+        if (rx_buf == 0) {
             printf("seek error:%s\r\n", lteRxBuf);
+            return -1;
         }
 
         memset(buf, 0, 128);
@@ -416,7 +443,7 @@ char writefile(uint32_t len,char* FileHandle) {
         strcpy(buf, "AT+QFREAD=");
         strcat(buf, FileHandle);
         strcat(buf, ",");
-        sprintf(str_len,"%d",DOWNLOADLEN);//读取1024长度
+        sprintf(str_len, "%d", DOWNLOADLEN);//读取1024长度
         strcat(buf, str_len);
         strcat(buf, "\r\n");
 
@@ -424,37 +451,37 @@ char writefile(uint32_t len,char* FileHandle) {
         if (rx_buf != 0) {
             rx_buf = FindStrFroMem((char *) lteRxBuf, LTE_USART_REC_LEN, "CONNECT");
             if (rx_buf != 0) {
-                rx_buf += 9;
-                STMFLASH_Write(FLASH_AppAddress + count * DOWNLOADLEN, (uint16_t *) rx_buf, DOWNLOADLEN / 2);
+                rx_buf += 14;
+                memset(pData,0,DOWNLOADLEN);
+                memcpy(pData,rx_buf,DOWNLOADLEN);//搬运到缓存区
+                STMFLASH_Write(FLASH_FileAddress + count * DOWNLOADLEN, (uint16_t *)pData, DOWNLOADLEN/2);
             } else {
-                printf("find not connect\r\n");
+                printf("no connect\r\n");
                 return -1;
             }
         } else {
-            printf("读取文件error:%s\r\n", lteRxBuf);
+            printf("read error:%s\r\n", lteRxBuf);
             return -1;
         }
+        count++;
     }
 
-    if (count == time && rest_flag != 0)//有剩余包且到达指定位置
+    if (count == time && rest_len != 0)//有剩余包且到达指定位置
     {
-        rest_flag = 0;
+        rx_buf = NULL;
         memset(buf, 0, 128);
         memset(str_len, 0, 5);
         strcpy(buf, "AT+QFSEEK=");
         strcat(buf, FileHandle);
         strcat(buf, ",");
-        sprintf(str_len,"%d",HEAD_LEN + count * DOWNLOADLEN);
+        sprintf(str_len, "%d", HEAD_LEN + count * DOWNLOADLEN);
         strcat(buf, str_len);
         strcat(buf, ",0\r\n");//每次从文件最初位置开始移动
+        rx_buf = SendATCommand(buf, "OK", TIME_IN);
 
-        rx_buf = SendATCommand(buf, Int2String(HEAD_LEN + count * DOWNLOADLEN, str_len), TIME_IN);
-
-        if (rx_buf != 0) {
-            printf("seek right:%s\r\n", lteRxBuf);
-        } else {
+        if (rx_buf == 0) {
             printf("seek error:%s\r\n", lteRxBuf);
-            //return -1;//seek的OK一直都是error
+            return -1;
         }
 
         memset(buf, 0, 128);
@@ -462,7 +489,7 @@ char writefile(uint32_t len,char* FileHandle) {
         strcpy(buf, "AT+QFREAD=");
         strcat(buf, FileHandle);
         strcat(buf, ",");
-        sprintf(str_len,"%d",DOWNLOADLEN);//读取1024长度
+        sprintf(str_len, "%d", rest_len);
         strcat(buf, str_len);
         strcat(buf, "\r\n");
 
@@ -471,8 +498,10 @@ char writefile(uint32_t len,char* FileHandle) {
         if (rx_buf != 0) {
             rx_buf = FindStrFroMem((char *) lteRxBuf, LTE_USART_REC_LEN, "CONNECT");
             if (rx_buf != 0) {
-                rx_buf += 9;
-                STMFLASH_Write(FLASH_AppAddress + count * DOWNLOADLEN, (uint16_t *) rx_buf, DOWNLOADLEN / 2);
+                rx_buf += (10 + strlen(str_len));
+                memset(pData,0,DOWNLOADLEN);
+                memcpy(pData,rx_buf,DOWNLOADLEN);//搬运到缓存区
+                STMFLASH_Write(FLASH_FileAddress + count * DOWNLOADLEN, (uint16_t *)pData, DOWNLOADLEN/2);
             } else {
                 printf("find not connect%s\r\n", lteRxBuf);
                 return -1;
@@ -481,22 +510,20 @@ char writefile(uint32_t len,char* FileHandle) {
             printf("读取文件error:%s\r\n", lteRxBuf);
             return -1;
         }
-
-        memset(buf, 0, 128);
-        strcpy(buf, "AT+QFCLOSE=");
-        strcat(buf, FileHandle);
-        strcat(buf, "\r\n");
-
-        if (0 != SendATCommand(buf, "OK", TIME_IN)) {
-            printf("close file right:%s\r\n", lteRxBuf);
-        } else {
-            printf("close file error\r\n");
-            return -1;
-        }
     }
-    count++;
-    return count;
+
+    memset(buf, 0, 128);
+    strcpy(buf, "AT+QFCLOSE=");
+    strcat(buf, FileHandle);
+    strcat(buf, "\r\n");
+
+    if (0 == SendATCommand(buf, "OK", TIME_IN)) {
+        printf("close file error\r\n");
+        return -1;
+    }
+    return 0;
 }
+
 
 int Wait_LTE_RDY(uint8_t time) {
     while (--time) {
@@ -526,19 +553,27 @@ int LTE_Signal_Quality(void) {
     return 0;
 }
 
-//下载文件并
+//下载文件并处理
 char downloadAndWrite() {
-    mcuFileData.app_size = getfile_size(mcuOtaData.fileName)-96;
-    if(mcuFileData.app_size==0){
+#if 1
+    mcuFileData.app_size = getfile_size(mcuOtaData.fileName) - 96;
+    if (mcuFileData.app_size == 0) {
         printf("app_size error\r\n");
         return -1;
     }
+
     deletefile();
     if (downloadfile(&mcuOtaData) != 0) {
         printf("download error\r\n");
         return -1;
     }
-    if (writefile(mcuFileData.app_size - 96, mcuFileData.handle) != 0) {
+#endif
+    if (getfile_headmd5(&mcuFileData, "app.bin") != 0) {
+        printf("get md5 error\r\n");
+        return -1;
+    }
+
+    if (writefile(mcuFileData.app_size, mcuFileData.handle,MD5bin) != 0) {
         printf("write error\r\n");
         return -1;
     }

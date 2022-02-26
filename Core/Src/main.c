@@ -21,7 +21,6 @@
 #include "main.h"
 #include "dma.h"
 #include "iwdg.h"
-#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -98,6 +97,32 @@ static void MX_NVIC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 /* USER CODE END 0 */
+
+//void test(uint8_t * padta) {
+//    char *rx_buf = NULL;
+//    uint16_t Abuf[110] ;
+//    int i = 0;
+//    for (i = 0; i < 256; i++) { lteRxBuf[i] = 0x30 + i%10; }
+//
+//    rx_buf = FindStrFroMem((char *)lteRxBuf,256,"12345678");
+//    memcpy(padta,rx_buf,200);
+//    if (rx_buf != 0) {
+//        printf("t begin\r\n");
+//		STMFLASH_Write(FLASH_FileAddress,(uint16_t *) FLASH_InfoAddress, DOWNLOADLEN / 2);
+//        printf("t 0\r\n");
+//        STMFLASH_Write(FLASH_FileAddress, (uint16_t *) lteRxBuf, DOWNLOADLEN / 2);
+//        printf("t 1\r\n");
+//        STMFLASH_Write(FLASH_FileAddress+2048, (uint16_t *) padta, DOWNLOADLEN / 2);
+//        printf("t end\r\n");
+//    }
+//    STMFLASH_Read(FLASH_FileAddress+2048,Abuf,100);{
+//        printf("t :%x\r\n",Abuf[0]);
+//        printf("t :%x\r\n",Abuf[1]);
+//        printf("t :%x\r\n",Abuf[2]);
+//
+//    }
+//}
+
 /**
   * @brief  The application entry point.
   * @retval int
@@ -107,7 +132,7 @@ int main(void) {
     int i = 0;
     static uint8_t restartCount = 0;
     static uint8_t errorCount = 0;
-    static uint8_t openCount=0;//开机失败次数加1
+    static uint8_t openCount = 0;//开机失败次数加1
     /* USER CODE END 1 */
 
     /* MCU Configuration--------------------------------------------------------*/
@@ -132,14 +157,12 @@ int main(void) {
     MX_USART1_UART_Init();
     MX_USART2_UART_Init();
     MX_IWDG_Init();
-    MX_TIM3_Init();
 
     /* Initialize interrupts */
     MX_NVIC_Init();
     /* USER CODE BEGIN 2 */
-    HAL_TIM_Base_Start_IT(&htim3);
     __HAL_UART_ENABLE_IT(&huart1, UART_IT_IDLE);
-    __HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);
+    HAL_UART_Receive_DMA(&huart1, lteRxBuf, LTE_USART_REC_LEN);//防止分段
 
     printf("hello I am ota\r\n");
     HAL_Delay(200);
@@ -157,8 +180,6 @@ int main(void) {
         OTA_STATUS = OTA_JUMP;
     }
 
-
-//   __enable_irq();
     while (1) {
         /* USER CODE END WHILE */
 
@@ -178,6 +199,9 @@ int main(void) {
             errorCount = 0;
             //是否需要关机？
             ++restartCount;//重启次数加1
+            ftpserver_logout();
+            ModuleClose();
+            HAL_Delay(5000);
             OTA_STATUS = OTA_INIT;
         }
 
@@ -193,54 +217,54 @@ int main(void) {
                 if (ftpserver_config(&mcuOtaData) == 0) {
                     printf("config ok\r\n");
                     OTA_STATUS = OTA_LOGIN;
-                }
-                else{
-                   errorCount++;
+                } else {
+                    errorCount++;
                 }
                 break;
             case OTA_LOGIN:
                 if (ftpserver_login(&mcuOtaData) == 0) {
                     printf("login ok\r\n");
                     OTA_STATUS = OTA_DOWNLOAD;
-                }
-                else{
+                } else {
                     errorCount++;
                 }
                 break;
 
             case OTA_DOWNLOAD:
-                if(downloadAndWrite()==0){
+                if (downloadAndWrite() == 0) {
                     printf("download ok\r\n");
                     OTA_STATUS = OTA_CHECK;
-                }
-                else{
+                } else {
                     errorCount++;
                 }
                 break;
             case OTA_CHECK:
-                getfile_headmd5(&mcuFileData, mcuOtaData.fileName);//直接从远程读取，防止文件下载中error
-                if (0 == Judge_MD5(MD5bin, mcuFileData.app_size, (char *) decrypt)) {
-                    printf("check ok\r\n");
-                    for(i=0;i<16;i++){printf("md5 before:%x\r\n",mcuFileData.md5[i]);};
-                    for(i=0;i<16;i++){printf("md5 now:%x\r\n",decrypt[i]);};
+                if(getMd5AndCmp((unsigned char *)FLASH_FileAddress,mcuFileData.app_size,decrypt)==0){
                     OTA_STATUS = OTA_WRITE;
-                } else {
+                }else {
+                    for(i=0;i<16;i++)//md5校验结果计算
+                    {
+                       printf("%x\r\n",decrypt[i]);
+                    }
                     errorCount++;
                 }
-
                 break;
             case OTA_WRITE:
+                printf("write!!!\r\n");
                 //一定要保证完全正确进入这一步
-                IAP_Write_App_Bin(FLASH_AppAddress,(uint16_t *)FLASH_InfoAddress,mcuFileData.app_size);
+                __disable_irq();
+                IAP_Write_App_Bin(FLASH_AppAddress, (uint16_t *) FLASH_FileAddress, mcuFileData.app_size);
+                __enable_irq();
                 OTA_STATUS = OTA_JUMP;
+                printf("go to jump!!!\r\n");
                 ftpserver_logout();
                 break;
                 //再次校验加入
             case OTA_JUMP:
+                printf("jump!!!\r\n");
                 HAL_DeInit();
                 HAL_UART_MspDeInit(&huart1);
                 HAL_UART_MspDeInit(&huart2);
-                HAL_TIM_Base_DeInit(&htim3);
                 IAP_ExecuteApp(FLASH_AppAddress);
                 break;
             default:
@@ -297,15 +321,9 @@ void SystemClock_Config(void) {
   * @retval None
   */
 static void MX_NVIC_Init(void) {
-    /* TIM3_IRQn interrupt configuration */
-    HAL_NVIC_SetPriority(TIM3_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(TIM3_IRQn);
     /* USART1_IRQn interrupt configuration */
     HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
-    /* USART2_IRQn interrupt configuration */
-    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
 /* USER CODE BEGIN 4 */
