@@ -64,43 +64,43 @@ int get_app_infomation(OtaData *otaInfo) {
     posY = MQTT_Comma_Pos(ptr, 2);
     if (posX != 0XFF && posY != 0XFF) {
         memcpy(otaInfo->serverAddress, ptr + posX, (posY - posX - 1));
-        printf("server address is:%s\r\n", otaInfo->serverAddress);
+        //printf("server address is:%s\r\n", otaInfo->serverAddress);
     }
 
     posX = MQTT_Comma_Pos(ptr, 2);
     posY = MQTT_Comma_Pos(ptr, 3);
     if (posX != 0XFF && posY != 0XFF) {
         memcpy(otaInfo->serverPort, ptr + posX, (posY - posX - 1));
-        printf("port is:%s\r\n", otaInfo->serverPort);
+        //printf("port is:%s\r\n", otaInfo->serverPort);
     }
 
     posX = MQTT_Comma_Pos(ptr, 3);
     posY = MQTT_Comma_Pos(ptr, 4);
     if (posX != 0XFF && posY != 0XFF) {
         memcpy(otaInfo->userName, ptr + posX, (posY - posX - 1));
-        printf("userName is:%s\r\n", otaInfo->userName);
+        //printf("userName is:%s\r\n", otaInfo->userName);
     }
 
     posX = MQTT_Comma_Pos(ptr, 4);
     posY = MQTT_Comma_Pos(ptr, 5);
     if (posX != 0XFF && posY != 0XFF) {
         memcpy(otaInfo->password, ptr + posX, (posY - posX - 1));
-        printf("password is:%s\r\n", otaInfo->password);
+        //printf("password is:%s\r\n", otaInfo->password);
     }
 
     posX = MQTT_Comma_Pos(ptr, 5);
     posY = MQTT_Comma_Pos(ptr, 6);
     if (posX != 0XFF && posY != 0XFF) {
         memcpy(otaInfo->fileName, ptr + posX, (posY - posX - 1));
-        printf("fileName is:%s\r\n", otaInfo->fileName);
+        //printf("fileName is:%s\r\n", otaInfo->fileName);
     }
 
     memset(temp_Buffer,0x56,100);//清空buffer
 
     __disable_irq();
-    printf("run write\r\n");
+//    printf("run write\r\n");
     STMFLASH_Write(FLASH_InfoAddress, (uint16_t *) &temp_Buffer[0], 50);//写一次数据
-    printf("run end\r\n");
+//    printf("run end\r\n");
     __enable_irq();
     return 0;
 }

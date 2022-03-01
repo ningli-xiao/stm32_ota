@@ -225,7 +225,9 @@ int main(void)
                 }
                 break;
             case OTA_WRITE:
+							__disable_irq();
                 STMFLASH_Write(FLASH_AppAddress, (uint16_t *) FLASH_FileAddress, mcuFileData.app_size/2+mcuFileData.app_size%2);
+						__enable_irq();
                 OTA_STATUS = OTA_JUMP;
                 if(getMd5AndCmp((unsigned char *)FLASH_AppAddress,mcuFileData.app_size,decrypt)==0){
                     printf("check again!!!\r\n");
